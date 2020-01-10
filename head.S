@@ -20,6 +20,7 @@
  */
 
 #include <defs.h>
+#include <iommu_defs.h>
 
 /* Selectors, CS and SS compatible with initial state after SKINIT */
 #define CS_SEL32         0x0008
@@ -266,3 +267,22 @@ GLOBAL(lz_header) /* The LZ header setup by the bootloader */
 	.long	0 /* Zero Page address */
 	.fill	0x14 /* MSB Key Hash */
 ENDDATA(lz_header)
+
+/* TODO: much precious space is wasted here */
+	.align PAGE_SIZE
+GLOBAL(old_device_table)
+	.rept (128)
+	.quad IOMMU_DTE_Q0_V + IOMMU_DTE_Q0_TV
+	.quad 0
+	.quad 0 /* IOMMU_DTE_Q2_IV + IOMMU_DTE_Q2_IG */
+	.quad 0
+	.endr
+ENDDATA(old_device_table)
+
+GLOBAL(old_command_buf)
+	.fill PAGE_SIZE
+ENDDATA(old_command_buf)
+
+GLOBAL(old_event_log)
+	.fill PAGE_SIZE
+ENDDATA(old_event_log)

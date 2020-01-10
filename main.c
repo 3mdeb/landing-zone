@@ -20,13 +20,11 @@
 #include <types.h>
 #include <boot.h>
 #include <pci.h>
-#include <dev.h>
+#include <iommu.h>
 #include <tpm.h>
 #include <sha1sum.h>
 #include <sha256.h>
 #include <linux-bootparams.h>
-
-static u8 __page_data dev_table[3 * PAGE_SIZE];
 
 #ifdef DEBUG
 static void print_char(char c)
@@ -220,10 +218,10 @@ asm_return_t lz_main(void)
 	struct boot_params *bp;
 	struct kernel_info *ki;
 	struct mle_header *mle_header;
-	u64 pfn, end_pfn;
-	u32 dev;
 	void *pm_kernel_entry;
+	u32 iommu_cap;
 	struct tpm *tpm;
+	volatile u64 iommu_done __attribute__ ((aligned (8))) = 0;
 
 	/*
 	 * Now in 64b mode, paging is setup. This is the launching point. We can
@@ -236,25 +234,21 @@ asm_return_t lz_main(void)
 	/* The Zero Page with the boot_params and legacy header */
 	bp = _p(lz_header.zero_page_addr);
 
-	/* DEV CODE */
-
-	pfn = PAGE_PFN(bp);
-	end_pfn = PAGE_PFN(PAGE_DOWN(_start + 0x10000));
-
-	/* TODO: check end_pfn is not ouside of range of DEV map */
-
-	/* build protection bitmap */
-	for (;pfn <= end_pfn; pfn++) {
-		dev_protect_page(pfn, dev_table);
+	pci_init();
+	iommu_cap = iommu_locate();
+	if (iommu_cap == 0 || iommu_load_device_table(iommu_cap, &iommu_done)) {
+		print("Couldn't set up IOMMU. Is it enabled by firmware?\n");
 	}
 
-	pci_init();
-	dev = dev_locate();
-	dev_load_map(dev, _u(dev_table));
-	dev_flush_cache(dev);
+	print("Waiting");
+	//while (!iommu_done) {
+		//print_char('.');
+	//}
+	// Only after IOMMU is **properly** configured we can disable SLB protection
+	print("\n");
 
-	/* Set the DEV address for the TB stub to use */
-	bp->tb_dev_map = _u(dev_table);
+	/* Set the Device Table address for the TB stub to use */
+	bp->tb_dev_map = _u(device_table);
 
 	print("\ncode32_start ");
 	print_p(_p(bp->code32_start));
@@ -302,6 +296,12 @@ asm_return_t lz_main(void)
 	hexdump(bp, 0x280);
 	print("lz_base:\n");
 	hexdump(_start, 0x100);
+	print("device_table:\n");
+	hexdump(device_table, 0x100);
+	print("command_buf:\n");
+	hexdump(command_buf, 0x1000);
+	print("event_log:\n");
+	hexdump(event_log, 0x1000);
 
 	print("lz_main() is about to exit\n");
 
