@@ -21,6 +21,7 @@
 
 #include <defs.h>
 #include <config.h>
+#include <multiboot2.h>
 
 /* Selectors, CS and SS compatible with initial state after SKINIT */
 #define CS_SEL32         0x0008
@@ -119,7 +120,13 @@ GLOBAL(_entry)
 1:
 #endif	/* 64bit setup. */
 
+	cmpl	$0, boot_protocol(%ebp)
+	jne	1f
 	call	lz_main
+	jmp	2f
+1:
+	call	lz_multiboot2
+2:
 	/*
 	 * lz_main() is magic.  It returns two pointers by register:
 	 *
@@ -164,9 +171,18 @@ GLOBAL(_entry)
 	push	$0
 	popf
 
+	cmpl	$0, boot_protocol(%ebp)
+	jne	1f
+
 	/* Jump to entry target - EBX: startup_32 ESI: ZP base EDX: LZ base */
 	mov	%ebp, %edx
 	jmp	*%ebx
+
+1:
+	mov	%ebx, %ecx
+	mov	%esi, %ebx
+	mov	$MULTIBOOT2_BOOTLOADER_MAGIC, %eax
+	jmp *%ecx
 ENDFUNC(_entry)
 
 	.data
@@ -246,13 +262,13 @@ ENDDATA(l4_identmap)
 
 	.section .bootloader_data, "a", @progbits
 
-GLOBAL(lz_header) /* The LZ header setup by the bootloader */
+GLOBAL(lz_header) /* The LZ header set up by the bootloader */
 	.long	0x8e26f178 /* UUID */
 	.long	0xe9119204
 	.long	0x5bc82a83
 	.long	0x02ccc476
-	.long	0 /* Total size of Trenchboot Intermediate Loader */
-		  /* bzImage (padded out to next page) */
-	.long	0 /* Zero Page address */
+boot_protocol:
+	.long	0 /* Boot protocol used */
+	.long	0 /* Address of the relevant structure of given protocol */
 	.fill	0x14 /* MSB Key Hash */
 ENDDATA(lz_header)

@@ -47,10 +47,13 @@ typedef struct __packed sl_header {
 } sl_header_t;
 extern sl_header_t sl_header;
 
+#define LINUX_BOOT	0
+#define MULTIBOOT2	2
+
 typedef struct __packed lz_header {
 	u8  uuid[16]; /* 78 f1 26 8e 04 92 11 e9  83 2a c8 5b 76 c4 cc 02 */
-	u32 slaunch_loader_size;
-	u32 zero_page_addr;
+	u32 boot_protocol;
+	u32 proto_struct;
 	u8  msb_key_hash[20];
 } lz_header_t;
 extern lz_header_t lz_header;
