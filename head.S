@@ -255,6 +255,23 @@ l4_identmap: /* 1x L4 page, mapping the L3 page. 1 relocation. */
 ENDDATA(l4_identmap)
 #endif
 
+GLOBAL(old_command_buf)
+	.fill PAGE_SIZE
+ENDDATA(old_command_buf)
+
+GLOBAL(old_event_log)
+	.fill PAGE_SIZE
+ENDDATA(old_event_log)
+
+GLOBAL(old_device_table)
+	.rept (256)
+	.quad IOMMU_DTE_Q0_V + IOMMU_DTE_Q0_TV
+	.quad 0
+	.quad 0 /* IOMMU_DTE_Q2_IV + IOMMU_DTE_Q2_IG */
+	.quad 0
+	.endr
+ENDDATA(old_device_table)
+
 	.section .bootloader_data, "a", @progbits
 
 GLOBAL(lz_header) /* The LZ header setup by the bootloader */
@@ -268,21 +285,3 @@ GLOBAL(lz_header) /* The LZ header setup by the bootloader */
 	.fill	0x14 /* MSB Key Hash */
 ENDDATA(lz_header)
 
-/* TODO: much precious space is wasted here */
-	.align PAGE_SIZE
-GLOBAL(old_device_table)
-	.rept (128)
-	.quad IOMMU_DTE_Q0_V + IOMMU_DTE_Q0_TV
-	.quad 0
-	.quad 0 /* IOMMU_DTE_Q2_IV + IOMMU_DTE_Q2_IG */
-	.quad 0
-	.endr
-ENDDATA(old_device_table)
-
-GLOBAL(old_command_buf)
-	.fill PAGE_SIZE
-ENDDATA(old_command_buf)
-
-GLOBAL(old_event_log)
-	.fill PAGE_SIZE
-ENDDATA(old_event_log)

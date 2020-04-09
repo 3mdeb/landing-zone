@@ -103,9 +103,9 @@ u32 iommu_locate(void)
 
 	// A - all tables outside SLB
 	//device_table = (char *)&sl_header + 64 * 1024;
-	//command_buf = (iommu_command_t*)((char *)&sl_header + 64 * 1024 + PAGE_SIZE);
-	//event_log = (char *)&sl_header + 64 * 1024 + 2 * PAGE_SIZE;
-	//memcpy_unsafe(device_table, old_device_table, PAGE_SIZE);
+	//command_buf = (iommu_command_t*)((char *)&sl_header + 64 * 1024 + 2 * PAGE_SIZE);
+	//event_log = (char *)&sl_header + 64 * 1024 + 3 * PAGE_SIZE;
+	//memcpy_unsafe(device_table, old_device_table, 2 * PAGE_SIZE);
 
 	// B - all tables inside SLB
 	//device_table = &old_device_table[0];
@@ -162,8 +162,8 @@ u32 iommu_load_device_table(u32 cap, volatile u64 *completed)
 	mmio_base[IOMMU_MMIO_CONTROL_REGISTER] &= ~IOMMU_CR_ENABLE_ALL_MASK;
 	barrier();
 
-	/* address of Device Table and its size (bits 8:0 = 0 -> size = 4KB) */
-	mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA] = (u64)device_table;
+	/* address and size of Device Table (bits 8:0 = 0 -> 4KB; 1 -> 8KB ...) */
+	mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA] = (u64)device_table | 1;
 
 	ptr = (void *) mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA];
 	print_p(ptr);
