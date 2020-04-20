@@ -2,6 +2,9 @@ image: gcc:9.3.0
 
 build:
   stage: build
+  # install bsdmainutils for hexdump
+  before_script:
+    - apt update && apt -y install bsdmainutils
   script:
     - make
   artifacts:
