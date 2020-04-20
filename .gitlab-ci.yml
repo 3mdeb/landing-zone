@@ -1,0 +1,9 @@
+image: gcc:9.3.0
+
+build:
+  stage: build
+  script:
+    - make
+  artifacts:
+    paths:
+      - lz_header.bin
