@@ -35,10 +35,10 @@ build_nixpkg_debug_disabled:
     - GIT_DESCRIBE=$(git describe HEAD --tags)
     - sed -e "s/0.3.0+git/${GIT_DESCRIBE:1}/" -i nixos-trenchboot-configs/nixpkgs/landing-zone/default.nix
     - NIX_STORE_PATH=$(nix-build nixos-trenchboot-configs/nixpkgs/landing-zone/default.nix)
-    - nix-store --export $NIX_STORE_PATH | bzip2 > landing-zone-$GIT_DESCRIBE.closure.bz2
+    - nix-store --export $NIX_STORE_PATH | bzip2 > landing-zone.closure.bz2
   artifacts:
     paths:
-      - landing-zone-$GIT_DESCRIBE.closure.bz2
+      - landing-zone.closure.bz2
 
 build_nixpkg_debug_enabled:
   stage: build
@@ -50,7 +50,7 @@ build_nixpkg_debug_enabled:
     - GIT_DESCRIBE=$(git describe HEAD --tags)
     - sed -e "s/0.3.0+git/${GIT_DESCRIBE:1}/" -i nixos-trenchboot-configs/nixpkgs/landing-zone-debug/default.nix
     - NIX_STORE_PATH=$(nix-build nixos-trenchboot-configs/nixpkgs/landing-zone-debug/default.nix)
-    - nix-store --export $NIX_STORE_PATH | bzip2 > landing-zone-debug-$GIT_DESCRIBE.closure.bz2
+    - nix-store --export $NIX_STORE_PATH | bzip2 > landing-zone-debug.closure.bz2
   artifacts:
     paths:
-      - landing-zone-debug-$GIT_DESCRIBE.closure.bz2
+      - landing-zone-debug.closure.bz2
