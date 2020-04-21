@@ -1,10 +1,9 @@
-image: gcc:9.3.0
-
 stages:
   - build
 
 build_debug_disabled:
   stage: build
+  image: gcc:9.3.0
   # install bsdmainutils for hexdump
   before_script:
     - apt update && apt -y install bsdmainutils
@@ -16,6 +15,7 @@ build_debug_disabled:
 
 build_debug_enabled:
   stage: build
+  image: gcc:9.3.0
   # install bsdmainutils for hexdump
   before_script:
     - apt update && apt -y install bsdmainutils
@@ -24,3 +24,32 @@ build_debug_enabled:
   artifacts:
     paths:
       - lz_header.bin
+
+build_nixpkg_debug_disabled:
+  stage: build
+  image: nixos/nix:2.3
+  before_script:
+    - nix-env -i git
+  script:
+    - git clone https://github.com/3mdeb/nixos-trenchboot-configs.git
+    - git_describe=$(git describe HEAD --tags)
+    - sed -e "s/0.3.0+git/${git_describe:1}/" -i nixos-trenchboot-configs/nixpkgs/landing-zone/default.nix
+    - NIX_STORE_PATH=$(nix-build nixos-trenchboot-configs/nixpkgs/landing-zone/default.nix)
+    - nix-store --export $NIX_STORE_PATH | bzip2 > landing-zone.closure.bz2
+  artifacts:
+    paths:
+      - landing-zone.closure.bz2
+
+build_nixpkg_debug_enabled:
+  stage: build
+  before_script:
+    - nix-env -i git
+  script:
+    - git clone https://github.com/3mdeb/nixos-trenchboot-configs.git
+    - git_describe=$(git describe HEAD --tags)
+    - sed -e "s/0.3.0+git/${git_describe:1}/" -i nixos-trenchboot-configs/nixpkgs/landing-zone-debug/default.nix
+    - NIX_STORE_PATH=$(nix-build nixos-trenchboot-configs/nixpkgs/landing-zone-debug/default.nix)
+    - nix-store --export $NIX_STORE_PATH | bzip2 > landing-zone-debug.closure.bz2
+  artifacts:
+    paths:
+      - landing-zone-debug.closure.bz2
