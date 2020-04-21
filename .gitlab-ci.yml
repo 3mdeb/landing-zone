@@ -1,12 +1,26 @@
 image: gcc:9.3.0
 
-build:
+stages:
+  - build
+
+build_debug_disabled:
   stage: build
   # install bsdmainutils for hexdump
   before_script:
     - apt update && apt -y install bsdmainutils
   script:
     - make
+  artifacts:
+    paths:
+      - lz_header.bin
+
+build_debug_enabled:
+  stage: build
+  # install bsdmainutils for hexdump
+  before_script:
+    - apt update && apt -y install bsdmainutils
+  script:
+    - make DEBUG=y
   artifacts:
     paths:
       - lz_header.bin
