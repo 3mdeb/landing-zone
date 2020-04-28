@@ -13,6 +13,16 @@ build_debug_disabled:
     paths:
       - lz_header.bin
 
+build_nixpkg_debug_disabled:
+  stage: build
+  variables:
+    NIXPKG: "landing-zone"
+    LZ_COMMIT: "$CI_COMMIT_SHA"
+    LZ_TAG: "$CI_COMMIT_REF_NAME"
+  trigger:
+    project: trenchboot1/3mdeb/nixos-trenchboot-configs
+    strategy: depend
+
 build_debug_enabled:
   stage: build
   image: gcc:9.3.0
@@ -25,32 +35,12 @@ build_debug_enabled:
     paths:
       - lz_header.bin
 
-build_nixpkg_debug_disabled:
-  stage: build
-  image: nixos/nix:2.3
-  before_script:
-    - nix-env -i git
-  script:
-    - git clone https://github.com/3mdeb/nixos-trenchboot-configs.git
-    - GIT_DESCRIBE=$(git describe HEAD --tags)
-    - sed -e "s/0.3.0+git/${GIT_DESCRIBE:1}/" -i nixos-trenchboot-configs/nixpkgs/landing-zone/default.nix
-    - NIX_STORE_PATH=$(nix-build nixos-trenchboot-configs/nixpkgs/landing-zone/default.nix)
-    - nix-store --export $NIX_STORE_PATH | bzip2 > landing-zone.closure.bz2
-  artifacts:
-    paths:
-      - landing-zone.closure.bz2
-
 build_nixpkg_debug_enabled:
   stage: build
-  image: nixos/nix:2.3
-  before_script:
-    - nix-env -i git
-  script:
-    - git clone https://github.com/3mdeb/nixos-trenchboot-configs.git
-    - GIT_DESCRIBE=$(git describe HEAD --tags)
-    - sed -e "s/0.3.0+git/${GIT_DESCRIBE:1}/" -i nixos-trenchboot-configs/nixpkgs/landing-zone-debug/default.nix
-    - NIX_STORE_PATH=$(nix-build nixos-trenchboot-configs/nixpkgs/landing-zone-debug/default.nix)
-    - nix-store --export $NIX_STORE_PATH | bzip2 > landing-zone-debug.closure.bz2
-  artifacts:
-    paths:
-      - landing-zone-debug.closure.bz2
+  variables:
+    NIXPKG: "landing-zone"
+    LZ_COMMIT: "$CI_COMMIT_SHA"
+    LZ_TAG: "$CI_COMMIT_REF_NAME"
+  trigger:
+    project: trenchboot1/3mdeb/nixos-trenchboot-configs
+    strategy: depend
