@@ -30,6 +30,7 @@ build_nixpkg_debug_disabled:
   image: nixos/nix:2.3
   before_script:
     - nix-env -i git
+    - nix-env -iA cachix -f https://cachix.org/api/v1/install
   script:
     - git clone https://github.com/3mdeb/nixos-trenchboot-configs.git
     - GIT_DESCRIBE=$(git describe HEAD --tags)
@@ -45,6 +46,7 @@ build_nixpkg_debug_enabled:
   image: nixos/nix:2.3
   before_script:
     - nix-env -i git
+    - nix-env -iA cachix -f https://cachix.org/api/v1/install
   script:
     - git clone https://github.com/3mdeb/nixos-trenchboot-configs.git
     - GIT_DESCRIBE=$(git describe HEAD --tags)
@@ -54,3 +56,31 @@ build_nixpkg_debug_enabled:
   artifacts:
     paths:
       - landing-zone-debug.closure.bz2
+
+build_nixpkg_debug_disabled_cachix:
+  stage: build
+  only:
+    tags
+  image: nixos/nix:2.3
+  before_script:
+    - nix-env -i git
+    - nix-env -iA cachix -f https://cachix.org/api/v1/install
+  script:
+    - git clone https://github.com/3mdeb/nixos-trenchboot-configs.git
+    - NIX_STORE_PATH=$(nix-build nixos-trenchboot-configs/nixpkgs/landing-zone/default.nix)
+    - cachix authtoken $CACHIX_AUTHTOKEN
+    - cachix push 3mdeb $NIX_STORE_PATH
+
+build_nixpkg_debug_enabled_cachix:
+  stage: build
+  only:
+    tags
+  image: nixos/nix:2.3
+  before_script:
+    - nix-env -i git
+    - nix-env -iA cachix -f https://cachix.org/api/v1/install
+  script:
+    - git clone https://github.com/3mdeb/nixos-trenchboot-configs.git
+    - NIX_STORE_PATH=$(nix-build nixos-trenchboot-configs/nixpkgs/landing-zone-debug/default.nix)
+    - cachix authtoken $CACHIX_AUTHTOKEN
+    - cachix push 3mdeb $NIX_STORE_PATH
