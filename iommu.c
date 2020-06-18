@@ -23,6 +23,10 @@
 
 static u64 *mmio_base;
 
+char *device_table;
+char *event_log;
+iommu_command_t *command_buf;
+
 static void print_char(char c)
 {
 	while ( !(inb(0x3f8 + 5) & 0x20) )

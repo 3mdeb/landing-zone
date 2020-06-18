@@ -31,9 +31,9 @@ extern char old_device_table[];
 extern char old_event_log[];
 extern iommu_command_t old_command_buf[];
 
-char *device_table;
-char *event_log;
-iommu_command_t *command_buf;
+extern char *device_table;
+extern char *event_log;
+extern iommu_command_t *command_buf;
 
 u32 iommu_locate(void);
 u32 iommu_load_device_table(u32 cap, volatile u64 *completed);
