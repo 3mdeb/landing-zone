@@ -53,7 +53,7 @@
 #define DEV_CR_SL_DEV_EN_MASK	1<<5
 #define DEV_CR_WALK_PROBE_MASK	1<<6
 
-#define INVALID_CAP(c) ((c == 0) || (c == 0xF0))
+#define INVALID_CAP(c) (c == 0)
 
 
 static inline u32 dev_read(u32 dev, u32 function, u32 index)
