@@ -202,6 +202,7 @@ static void __attribute__((noreturn)) reboot(void)
 	unreachable();
 }
 
+#ifdef TEST_DMA
 static void do_dma(void)
 {
 	/* Set up the DMA channel so we can use it.  This tells the DMA */
@@ -239,7 +240,7 @@ static void do_dma(void)
 	// physically sending the data, this reads idle bus lines.
 	outb(0x09, 0x05);
 }
-
+#endif
 
 /*
  * Function return ABI magic:
@@ -259,23 +260,21 @@ asm_return_t lz_main(void)
 	struct kernel_info *ki;
 	struct mle_header *mle_header;
 	void *pm_kernel_entry;
-	u32 iommu_cap;
+	u32 iommu_cap, dev;
 	struct tpm *tpm;
 	volatile u64 iommu_done __attribute__ ((aligned (8))) = 0;
 
 	/*
 	 * Now in 64b mode, paging is setup. This is the launching point. We can
-	 * now do what we want. First order of business is to setup
-	 * DEV to cover memory from the start of bzImage to the end of the LZ
-	 * "kernel". At the end, trampoline to the PM entry point which will
+	 * now do what we want. First order of business is to setup IOMMU to cover
+	 * all memory. At the end, trampoline to the PM entry point which will
 	 * include the Secure Launch stub.
 	 */
 
 	/* The Zero Page with the boot_params and legacy header */
 	bp = _p(lz_header.zero_page_addr);
 
-	pci_init();
-	iommu_cap = iommu_locate();
+#ifdef TEST_DMA
 	memset(_p(1), 0xcc, 0x20); //_p(0) gives a null-pointer error
 	print("before DMA:\n");
 	hexdump(_p(0), 0x30);
@@ -290,53 +289,90 @@ asm_return_t lz_main(void)
 	/* Important line, it delays hexdump */
 	print("after DMA2              \n");
 	hexdump(_p(0), 0x30);
+#endif
+
+	pci_init();
+	iommu_cap = iommu_locate();
 
 	/*
-	 * TODO: We need to either pass information which one of protection
-	 * mechanisms is being used (DEV or IOMMU) or use the same discovery
-	 * algorithm as used here in the kernel.
+	 * SKINIT enables protection against DMA access from devices for SLB
+	 * (whole 64K, not just the measured part). This ensures that no device
+	 * can overwrite code or data of SL. Unfortunately, it also means that
+	 * IOMMU, being a PCI device, also cannot read from this memory region.
+	 * When IOMMU is trying to read a command from buffer located in SLB it
+	 * receives COMMAND_HARDWARE_ERROR (master abort).
+	 *
+	 * Luckily, after that error it enters a fail-safe state in which all
+	 * operations originating from devices are blocked. The IOMMU itself can
+	 * still access the memory, so after the SLB protection is lifted, it can
+	 * try to read the data located inside SLB and set up a proper protection.
+	 *
+	 * TODO: split iommu_load_device_table() into two parts, before and after
+	 *       DEV disabling
+	 *
+	 * TODO2: check if IOMMU always blocks the devices, even when it was
+	 *        configured before SKINIT
 	 */
 
 	if (iommu_cap == 0 || iommu_load_device_table(iommu_cap, &iommu_done)) {
-		u64 pfn, end_pfn;
-		u32 dev;
-
 		if (iommu_cap)
 			print("IOMMU disabled by a firmware, please check your settings\n");
 
-		print("Couldn't set up IOMMU, trying to use DEV instead\n");
+		print("Couldn't set up IOMMU, DMA attacks possible!\n");
 
-		/* DEV CODE */
-		pfn = PAGE_PFN(bp);
-		end_pfn = PAGE_PFN(PAGE_DOWN(_start + 0x10000));
-
-		/* TODO: check end_pfn is not ouside of range of DEV map */
-
-		/* build protection bitmap */
-		for (;pfn <= end_pfn; pfn++) {
-			dev_protect_page(pfn, dev_table);
+		/* Tell TB stub that there is no IOMMU */
+		bp->tb_dev_map = 0;
+	} else {
+		/* Turn off SLB protection, try again */
+		dev = dev_locate();
+		print("Disabling SLB protection\n");
+		if (dev) {
+			/* Older families with remains of DEV */
+			u32 dev_cr = dev_read(0xf0, DEV_CR, 0);
+			dev_write(0xf0, DEV_CR, 0, dev_cr & ~DEV_CR_SL_DEV_EN_MASK);
+		} else {
+			/* Fam 17h uses different DMA protection control register */
+			u32 sldev;
+			pci_read(0, 0, PCI_DEVFN(0x18, 0), 0x384, 4, &sldev);
+			pci_write(0, 0, PCI_DEVFN(0x18, 0), 0x384, 4, sldev & ~1);
 		}
 
-		/* TODO: add test if DEV works, it is unusable on newer platforms */
-		dev = dev_locate();
-		dev_load_map(dev, _u(dev_table));
-		dev_flush_cache(dev);
+#ifdef TEST_DMA
+		memset(_p(1), 0xcc, 0x20);
+		print("before DMA:\n");
+		hexdump(_p(0), 0x30);
+		do_dma();
+		/* Important line, it delays hexdump */
+		print("after DMA:              \n");
+		hexdump(_p(0), 0x30);
+		/* Important line, it delays hexdump */
+		print("and again\n");
+		hexdump(_p(0), 0x30);
 
-		/* Set the DEV address for the TB stub to use */
-		bp->tb_dev_map = _u(dev_table);
-	} else {
+		memset(_p(1), 0xcc, 0x20);
+		print("before DMA2\n");
+		hexdump(_p(0), 0x30);
+		do_dma();
+		/* Important line, it delays hexdump */
+		print("after DMA2              \n");
+		hexdump(_p(0), 0x30);
+		/* Important line, it delays hexdump */
+		print("and again2\n");
+		hexdump(_p(0), 0x30);
+#endif
 
-		print("Waiting");
-		//while (!iommu_done) {
-			//print_char('.');
-		//}
-		// Only after IOMMU is **properly** configured we can disable SLB protection
-		print("\n");
+		iommu_load_device_table(iommu_cap, &iommu_done);
+		print("Flushing IOMMU cache");
+		while (!iommu_done) {
+			print_char('.');
+		}
+		print("\nIOMMU set\n");
 
 		/* Set the Device Table address for the TB stub to use */
 		bp->tb_dev_map = _u(device_table);
 	}
 
+#ifdef TEST_DMA
 	memset(_p(1), 0xcc, 0x20);
 	print("before DMA:\n");
 	hexdump(_p(0), 0x30);
@@ -358,6 +394,7 @@ asm_return_t lz_main(void)
 	/* Important line, it delays hexdump */
 	print("and again2\n");
 	hexdump(_p(0), 0x30);
+#endif
 
 	print("\ncode32_start ");
 	print_p(_p(bp->code32_start));
