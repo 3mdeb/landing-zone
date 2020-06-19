@@ -202,6 +202,45 @@ static void __attribute__((noreturn)) reboot(void)
 	unreachable();
 }
 
+static void do_dma(void)
+{
+	/* Set up the DMA channel so we can use it.  This tells the DMA */
+	/* that we're going to be using this channel.  (It's masked) */
+	outb(0x0a, 0x05);
+
+	/* Clear any data transfers that are currently executing. */
+	outb(0x0c, 0x00);
+
+	/* Send the specified mode to the DMA. */
+	outb(0x0b, 0x45);
+
+	/* Send the offset address.  The first byte is the low base offset, the */
+	/* second byte is the high offset. */
+	//~ outportb(AddrPort[DMA_channel], LOW_BYTE(blk->offset));
+	//~ outportb(AddrPort[DMA_channel], HI_BYTE(blk->offset));
+	outb(0x02, 0x00);
+	outb(0x02, 0x00);
+
+	/* Send the physical page that the data lies on. */
+	//~ outportb(PagePort[DMA_channel], blk->page);
+	outb(0x83, 0x00);
+
+	/* Send the length of the data.  Again, low byte first. */
+	//~ outportb(CountPort[DMA_channel], LOW_BYTE(blk->length));
+	//~ outportb(CountPort[DMA_channel], HI_BYTE(blk->length));
+	outb(0x03, 0x20);
+	outb(0x03, 0x00);
+
+	/* Ok, we're done.  Enable the DMA channel (clear the mask). */
+	//~ outportb(MaskReg[DMA_channel], DMA_channel);
+	outb(0x0a, 0x01);
+
+	// "Device" says that it is ready to send data. As there is no device
+	// physically sending the data, this reads idle bus lines.
+	outb(0x09, 0x05);
+}
+
+
 /*
  * Function return ABI magic:
  *
@@ -237,6 +276,20 @@ asm_return_t lz_main(void)
 
 	pci_init();
 	iommu_cap = iommu_locate();
+	memset(_p(1), 0xcc, 0x20); //_p(0) gives a null-pointer error
+	print("before DMA:\n");
+	hexdump(_p(0), 0x30);
+	do_dma();
+	/* Important line, it delays hexdump */
+	print("after DMA:              \n");
+	hexdump(_p(0), 0x30);
+	memset(_p(1), 0xcc, 0x20);
+	print("before DMA2\n");
+	hexdump(_p(0), 0x30);
+	do_dma();
+	/* Important line, it delays hexdump */
+	print("after DMA2              \n");
+	hexdump(_p(0), 0x30);
 
 	/*
 	 * TODO: We need to either pass information which one of protection
@@ -284,6 +337,27 @@ asm_return_t lz_main(void)
 		bp->tb_dev_map = _u(device_table);
 	}
 
+	memset(_p(1), 0xcc, 0x20);
+	print("before DMA:\n");
+	hexdump(_p(0), 0x30);
+	do_dma();
+	/* Important line, it delays hexdump */
+	print("after DMA:              \n");
+	hexdump(_p(0), 0x30);
+	/* Important line, it delays hexdump */
+	print("and again\n");
+	hexdump(_p(0), 0x30);
+
+	memset(_p(1), 0xcc, 0x20);
+	print("before DMA2\n");
+	hexdump(_p(0), 0x30);
+	do_dma();
+	/* Important line, it delays hexdump */
+	print("after DMA2              \n");
+	hexdump(_p(0), 0x30);
+	/* Important line, it delays hexdump */
+	print("and again2\n");
+	hexdump(_p(0), 0x30);
 
 	print("\ncode32_start ");
 	print_p(_p(bp->code32_start));
