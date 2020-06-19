@@ -255,6 +255,8 @@ l4_identmap: /* 1x L4 page, mapping the L3 page. 1 relocation. */
 ENDDATA(l4_identmap)
 #endif
 
+/* IOMMU and DEV are not used at the same time, they can overlap. */
+GLOBAL(dev_table)
 GLOBAL(old_command_buf)
 	.fill PAGE_SIZE
 ENDDATA(old_command_buf)
@@ -271,6 +273,7 @@ GLOBAL(old_device_table)
 	.quad 0
 	.endr
 ENDDATA(old_device_table)
+ENDDATA(dev_table)
 
 	.section .bootloader_data, "a", @progbits
 

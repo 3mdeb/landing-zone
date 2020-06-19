@@ -20,6 +20,7 @@
 #include <types.h>
 #include <boot.h>
 #include <pci.h>
+#include <dev.h>
 #include <iommu.h>
 #include <tpm.h>
 #include <sha1sum.h>
@@ -236,19 +237,53 @@ asm_return_t lz_main(void)
 
 	pci_init();
 	iommu_cap = iommu_locate();
+
+	/*
+	 * TODO: We need to either pass information which one of protection
+	 * mechanisms is being used (DEV or IOMMU) or use the same discovery
+	 * algorithm as used here in the kernel.
+	 */
+
 	if (iommu_cap == 0 || iommu_load_device_table(iommu_cap, &iommu_done)) {
-		print("Couldn't set up IOMMU. Is it enabled by firmware?\n");
+		u64 pfn, end_pfn;
+		u32 dev;
+
+		if (iommu_cap)
+			print("IOMMU disabled by a firmware, please check your settings\n");
+
+		print("Couldn't set up IOMMU, trying to use DEV instead\n");
+
+		/* DEV CODE */
+		pfn = PAGE_PFN(bp);
+		end_pfn = PAGE_PFN(PAGE_DOWN(_start + 0x10000));
+
+		/* TODO: check end_pfn is not ouside of range of DEV map */
+
+		/* build protection bitmap */
+		for (;pfn <= end_pfn; pfn++) {
+			dev_protect_page(pfn, dev_table);
+		}
+
+		/* TODO: add test if DEV works, it is unusable on newer platforms */
+		dev = dev_locate();
+		dev_load_map(dev, _u(dev_table));
+		dev_flush_cache(dev);
+
+		/* Set the DEV address for the TB stub to use */
+		bp->tb_dev_map = _u(dev_table);
+	} else {
+
+		print("Waiting");
+		//while (!iommu_done) {
+			//print_char('.');
+		//}
+		// Only after IOMMU is **properly** configured we can disable SLB protection
+		print("\n");
+
+		/* Set the Device Table address for the TB stub to use */
+		bp->tb_dev_map = _u(device_table);
 	}
 
-	print("Waiting");
-	//while (!iommu_done) {
-		//print_char('.');
-	//}
-	// Only after IOMMU is **properly** configured we can disable SLB protection
-	print("\n");
-
-	/* Set the Device Table address for the TB stub to use */
-	bp->tb_dev_map = _u(device_table);
 
 	print("\ncode32_start ");
 	print_p(_p(bp->code32_start));

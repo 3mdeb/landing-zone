@@ -94,4 +94,6 @@ u32 dev_load_map(u32 dev, uintptr_t dev_bitmap_paddr);
 void dev_flush_cache(u32 dev);
 void dev_protect_page(u32 pfn, u8 *bit_vector);
 
+extern u8 dev_table[4 * PAGE_SIZE];
+
 #endif /* __DEV_H__ */
