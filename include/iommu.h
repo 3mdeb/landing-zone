@@ -27,13 +27,9 @@ typedef struct __packed {
 	u32 u3;
 } iommu_command_t;
 
-extern char old_device_table[2 * PAGE_SIZE];
-extern char old_event_log[PAGE_SIZE];
-extern iommu_command_t old_command_buf[PAGE_SIZE / sizeof(iommu_command_t)];
-
-extern char *device_table;
-extern char *event_log;
-extern iommu_command_t *command_buf;
+extern char device_table[2 * PAGE_SIZE];
+extern char event_log[PAGE_SIZE];
+extern iommu_command_t command_buf[PAGE_SIZE / sizeof(iommu_command_t)];
 
 u32 iommu_locate(void);
 u32 iommu_load_device_table(u32 cap, volatile u64 *completed);

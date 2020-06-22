@@ -217,10 +217,9 @@ ENDDATA(gdtr)
 .Lgdt_end:
 ENDDATA(gdt)
 
+.section .page_data, "a", @progbits
+.align PAGE_SIZE
 #ifdef __x86_64__
-	.section .page_data, "a", @progbits
-	.align PAGE_SIZE
-
 	/* 64bit Pagetables, identity map of the first 4G of RAM. */
 
 l1_identmap: /* 1x L1 page, mapping 2M of RAM.  No relocations. */
@@ -255,25 +254,22 @@ l4_identmap: /* 1x L4 page, mapping the L3 page. 1 relocation. */
 ENDDATA(l4_identmap)
 #endif
 
-/* IOMMU and DEV are not used at the same time, they can overlap. */
-GLOBAL(dev_table)
-GLOBAL(old_command_buf)
+GLOBAL(command_buf)
 	.fill PAGE_SIZE
-ENDDATA(old_command_buf)
+ENDDATA(command_buf)
 
-GLOBAL(old_event_log)
+GLOBAL(event_log)
 	.fill PAGE_SIZE
-ENDDATA(old_event_log)
+ENDDATA(event_log)
 
-GLOBAL(old_device_table)
+GLOBAL(device_table)
 	.rept (256)
 	.quad IOMMU_DTE_Q0_V + IOMMU_DTE_Q0_TV
 	.quad 0
 	.quad 0 /* IOMMU_DTE_Q2_IV + IOMMU_DTE_Q2_IG */
 	.quad 0
 	.endr
-ENDDATA(old_device_table)
-ENDDATA(dev_table)
+ENDDATA(device_table)
 
 	.section .bootloader_data, "a", @progbits
 
@@ -287,4 +283,3 @@ GLOBAL(lz_header) /* The LZ header setup by the bootloader */
 	.long	0 /* Zero Page address */
 	.fill	0x14 /* MSB Key Hash */
 ENDDATA(lz_header)
-

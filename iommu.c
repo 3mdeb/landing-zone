@@ -23,10 +23,6 @@
 
 static u64 *mmio_base;
 
-char *device_table;
-char *event_log;
-iommu_command_t *command_buf;
-
 static void print_char(char c)
 {
 	while ( !(inb(0x3f8 + 5) & 0x20) )
@@ -43,10 +39,9 @@ static void print(char * txt) {
 	}
 }
 
-static void print_p(const void * _p) {
+static void print_p(u64 p) {
 	char tmp[sizeof(void*)*2 + 5] = "0x";
 	int i;
-	size_t p = (size_t)_p;
 
 	for (i=0; i<sizeof(void*); i++) {
 		if ((p & 0xf) >= 10)
@@ -66,19 +61,12 @@ static void print_p(const void * _p) {
 	print(tmp);
 }
 
-// __builtin_memcpy is too safe, it won't copy to a manually crafted pointer
-static void __maybe_unused memcpy_unsafe(char *d, const char *s, u32 size)
-{
-	while (size--)
-		*d++ = *s++;
-}
-
 u32 iommu_locate(void)
 {
 	u32 pci_cap_ptr;
 	u32 next;
 
-	/* read capabilities pointer */
+	/* Read capabilities pointer */
 	pci_read(0, IOMMU_PCI_BUS,
 	         PCI_DEVFN(IOMMU_PCI_DEVICE, IOMMU_PCI_FUNCTION),
 	         PCI_CAPABILITY_LIST,
@@ -105,22 +93,6 @@ u32 iommu_locate(void)
 	if (INVALID_CAP(pci_cap_ptr))
 		return 0;
 
-	// A - all tables outside SLB
-	//device_table = (char *)&sl_header + 64 * 1024;
-	//command_buf = (iommu_command_t*)((char *)&sl_header + 64 * 1024 + 2 * PAGE_SIZE);
-	//event_log = (char *)&sl_header + 64 * 1024 + 3 * PAGE_SIZE;
-	//memcpy_unsafe(device_table, old_device_table, 2 * PAGE_SIZE);
-
-	// B - all tables inside SLB
-	//device_table = &old_device_table[0];
-	//event_log = &old_event_log[0];
-	//command_buf = &old_command_buf[0];
-
-	// C - Event Log outside SLB, other inside
-	event_log = (char *)&sl_header + 64 * 1024;
-	device_table = &old_device_table[0];
-	command_buf = &old_command_buf[0];
-
 	return pci_cap_ptr;
 }
 
@@ -136,14 +108,13 @@ u32 iommu_load_device_table(u32 cap, volatile u64 *completed)
 {
 	u32 low, hi;
 	iommu_command_t cmd = {0};
-	void * ptr;
 
 	pci_read(0, IOMMU_PCI_BUS,
 	         PCI_DEVFN(IOMMU_PCI_DEVICE, IOMMU_PCI_FUNCTION),
 	         IOMMU_CAP_BA_LOW(cap),
 	         4, &low);
 
-	/* IOMMU is enabled by AGESA */
+	/* IOMMU must be enabled by AGESA */
 	if ((low & IOMMU_CAP_BA_LOW_ENABLE) == 0)
 		return 1;
 
@@ -152,53 +123,50 @@ u32 iommu_load_device_table(u32 cap, volatile u64 *completed)
 	         IOMMU_CAP_BA_HIGH(cap),
 	         4, &hi);
 
-	mmio_base = (u64 *)((u64)hi << 32 | (low & 0xffffc000));
+	mmio_base = _p((u64)hi << 32 | (low & 0xffffc000));
 
 	print("IOMMU MMIO Base Address = ");
-	print_p(mmio_base);
+	print_p((u64)hi << 32 | (low & 0xffffc000));
 	print("\n");
 
-	ptr = (void *) mmio_base[IOMMU_MMIO_STATUS_REGISTER];
-	print_p(ptr);
+	print_p(mmio_base[IOMMU_MMIO_STATUS_REGISTER]);
 	print("IOMMU_MMIO_STATUS_REGISTER\n");
 
-	/* disable IOMMU and all its features */
+	/* Disable IOMMU and all its features */
 	mmio_base[IOMMU_MMIO_CONTROL_REGISTER] &= ~IOMMU_CR_ENABLE_ALL_MASK;
 	barrier();
 
-	/* address and size of Device Table (bits 8:0 = 0 -> 4KB; 1 -> 8KB ...) */
-	mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA] = (u64)device_table | 1;
+	/* Address and size of Device Table (bits 8:0 = 0 -> 4KB; 1 -> 8KB ...) */
+	mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA] = (u64)_u(device_table) | 1;
 
-	ptr = (void *) mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA];
-	print_p(ptr);
+	print_p(mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA]);
 	print("IOMMU_MMIO_DEVICE_TABLE_BA\n");
 
-	/* address and size of Command Buffer, reset head and tail registers */
-	mmio_base[IOMMU_MMIO_COMMAND_BUF_BA] = (u64)command_buf | (0x8ULL << 56);
+	/* Address and size of Command Buffer, reset head and tail registers */
+	mmio_base[IOMMU_MMIO_COMMAND_BUF_BA] = (u64)_u(command_buf) | (0x8ULL << 56);
 	mmio_base[IOMMU_MMIO_COMMAND_BUF_HEAD] = 0;
 	mmio_base[IOMMU_MMIO_COMMAND_BUF_TAIL] = 0;
 
-	ptr = (void *) mmio_base[IOMMU_MMIO_COMMAND_BUF_BA];
-	print_p(ptr);
+	print_p(mmio_base[IOMMU_MMIO_COMMAND_BUF_BA]);
 	print("IOMMU_MMIO_COMMAND_BUF_BA\n");
 
-	/* address and size of Event Log, reset head and tail registers */
-	mmio_base[IOMMU_MMIO_EVENT_LOG_BA] = (u64)event_log | (0x8ULL << 56);
+	/* Address and size of Event Log, reset head and tail registers */
+	mmio_base[IOMMU_MMIO_EVENT_LOG_BA] = (u64)_u(event_log) | (0x8ULL << 56);
 	mmio_base[IOMMU_MMIO_EVENT_LOG_HEAD] = 0;
 	mmio_base[IOMMU_MMIO_EVENT_LOG_TAIL] = 0;
 
-	ptr = (void *) mmio_base[IOMMU_MMIO_EVENT_LOG_BA];
-	print_p(ptr);
+	print_p(mmio_base[IOMMU_MMIO_EVENT_LOG_BA]);
 	print("IOMMU_MMIO_EVENT_LOG_BA\n");
 
+	/* Clear EventLogInt set by IOMMU not being able to read command buffer */
+	mmio_base[IOMMU_MMIO_STATUS_REGISTER] &= ~2;
 	barrier();
 	mmio_base[IOMMU_MMIO_CONTROL_REGISTER] |= IOMMU_CR_CmdBufEn | IOMMU_CR_EventLogEn;
 	asm volatile("wbinvd; sfence" ::: "memory");
 
 	mmio_base[IOMMU_MMIO_CONTROL_REGISTER] |= IOMMU_CR_IommuEn;
 
-	ptr = (void *) mmio_base[IOMMU_MMIO_STATUS_REGISTER];
-	print_p(ptr);
+	print_p(mmio_base[IOMMU_MMIO_STATUS_REGISTER]);
 	print("IOMMU_MMIO_STATUS_REGISTER\n");
 
 	if (mmio_base[IOMMU_MMIO_EXTENDED_FEATURE] & IOMMU_EF_IASup) {
@@ -207,23 +175,21 @@ u32 iommu_load_device_table(u32 cap, volatile u64 *completed)
 		send_command(cmd);
 	} /* TODO: else? */
 
-	ptr = (void *) mmio_base[IOMMU_MMIO_EXTENDED_FEATURE];
-	print_p(ptr);
+	print_p(mmio_base[IOMMU_MMIO_EXTENDED_FEATURE]);
 	print("IOMMU_MMIO_EXTENDED_FEATURE\n");
-	ptr = (void *) mmio_base[IOMMU_MMIO_STATUS_REGISTER];
-	print_p(ptr);
+	print_p(mmio_base[IOMMU_MMIO_STATUS_REGISTER]);
 	print("IOMMU_MMIO_STATUS_REGISTER\n");
 
-	// Write to a variable inside SLB (does not work, but does not report error either)
-	cmd.u0 = (u32)((u64)completed | 1);
-	cmd.u1 = (u32)((u64)completed >> 32);
+	/* Write to a variable inside SLB (does not work in the first call) */
+	cmd.u0 = _u(completed) | 1;
+	/* This should be '_u(completed)>>32', but SLB can't be above 4GB anyway */
+	cmd.u1 = 0;
 
 	cmd.opcode = COMPLETION_WAIT;
 	cmd.u2 = 0x656e6f64;	/* "done" */
 	send_command(cmd);
 
-	ptr = (void *) mmio_base[IOMMU_MMIO_STATUS_REGISTER];
-	print_p(ptr);
+	print_p(mmio_base[IOMMU_MMIO_STATUS_REGISTER]);
 	print("IOMMU_MMIO_STATUS_REGISTER\n");
 
 	return 0;

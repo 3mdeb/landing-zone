@@ -328,8 +328,8 @@ asm_return_t lz_main(void)
 		print("Disabling SLB protection\n");
 		if (dev) {
 			/* Older families with remains of DEV */
-			u32 dev_cr = dev_read(0xf0, DEV_CR, 0);
-			dev_write(0xf0, DEV_CR, 0, dev_cr & ~DEV_CR_SL_DEV_EN_MASK);
+			u32 dev_cr = dev_read(dev, DEV_CR, 0);
+			dev_write(dev, DEV_CR, 0, dev_cr & ~DEV_CR_SL_DEV_EN_MASK);
 		} else {
 			/* Fam 17h uses different DMA protection control register */
 			u32 sldev;
