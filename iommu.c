@@ -192,6 +192,13 @@ u32 iommu_load_device_table(u32 cap, volatile u64 *completed)
 	mmio_base[IOMMU_MMIO_CONTROL_REGISTER] &= ~IOMMU_CR_ENABLE_ALL_MASK;
 	barrier();
 
+		u32 tmp;
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF0, 4, 0x110);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xF4, 4, &tmp);
+		print_u64(tmp);
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF4, 4, (tmp & 0xfffff8ff) | (1<<10) | (1<<13));
+		print("   DTCSoftInvalidate\n");
+
 	/* Address and size of Device Table (bits 8:0 = 0 -> 4KB; 1 -> 8KB ...) */
 	mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA] = (u64)_u(device_table) | 1;
 
@@ -244,6 +251,108 @@ u32 iommu_load_device_table(u32 cap, volatile u64 *completed)
 	cmd.opcode = COMPLETION_WAIT;
 	cmd.u2 = 0x656e6f64;	/* "done" */
 	send_command(cmd);
+
+	print_u64(mmio_base[IOMMU_MMIO_STATUS_REGISTER]);
+	print("IOMMU_MMIO_STATUS_REGISTER\n");
+
+	return 0;
+}
+
+
+
+
+static void out_send_command(iommu_command_t cmd)
+{
+	u32 cmd_ptr = mmio_base[IOMMU_MMIO_COMMAND_BUF_TAIL] >> 4;
+	out_command_buf[cmd_ptr++] = cmd;
+	asm volatile("wbinvd; sfence" ::: "memory");
+	mmio_base[IOMMU_MMIO_COMMAND_BUF_TAIL] = (cmd_ptr << 4) & 0xfff;
+}
+
+u32 out_iommu_load_device_table(u32 cap, volatile u64 *completed)
+{
+	u32 low, hi;
+	iommu_command_t cmd = {0};
+
+	pci_read(0, IOMMU_PCI_BUS,
+	         PCI_DEVFN(IOMMU_PCI_DEVICE, IOMMU_PCI_FUNCTION),
+	         IOMMU_CAP_BA_LOW(cap),
+	         4, &low);
+
+	/* IOMMU must be enabled by AGESA */
+	if ((low & IOMMU_CAP_BA_LOW_ENABLE) == 0)
+		return 1;
+
+	pci_read(0, IOMMU_PCI_BUS,
+	         PCI_DEVFN(IOMMU_PCI_DEVICE, IOMMU_PCI_FUNCTION),
+	         IOMMU_CAP_BA_HIGH(cap),
+	         4, &hi);
+
+	mmio_base = _p((u64)hi << 32 | (low & 0xffffc000));
+
+	print("IOMMU MMIO Base Address = ");
+	print_u64((u64)hi << 32 | (low & 0xffffc000));
+	print("\n");
+
+	print_u64(mmio_base[IOMMU_MMIO_STATUS_REGISTER]);
+	print("IOMMU_MMIO_STATUS_REGISTER\n");
+
+	/* Disable IOMMU and all its features */
+	mmio_base[IOMMU_MMIO_CONTROL_REGISTER] &= ~IOMMU_CR_ENABLE_ALL_MASK;
+	barrier();
+
+	/* Address and size of Device Table (bits 8:0 = 0 -> 4KB; 1 -> 8KB ...) */
+	mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA] = (u64)_u(out_device_table) | 1;
+
+	print_u64(mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA]);
+	print("IOMMU_MMIO_DEVICE_TABLE_BA\n");
+
+	/* Address and size of Command Buffer, reset head and tail registers */
+	mmio_base[IOMMU_MMIO_COMMAND_BUF_BA] = (u64)_u(out_command_buf) | (0x8ULL << 56);
+	mmio_base[IOMMU_MMIO_COMMAND_BUF_HEAD] = 0;
+	mmio_base[IOMMU_MMIO_COMMAND_BUF_TAIL] = 0;
+
+	print_u64(mmio_base[IOMMU_MMIO_COMMAND_BUF_BA]);
+	print("IOMMU_MMIO_COMMAND_BUF_BA\n");
+
+	/* Address and size of Event Log, reset head and tail registers */
+	mmio_base[IOMMU_MMIO_EVENT_LOG_BA] = (u64)_u(out_event_log) | (0x8ULL << 56);
+	mmio_base[IOMMU_MMIO_EVENT_LOG_HEAD] = 0;
+	mmio_base[IOMMU_MMIO_EVENT_LOG_TAIL] = 0;
+
+	print_u64(mmio_base[IOMMU_MMIO_EVENT_LOG_BA]);
+	print("IOMMU_MMIO_EVENT_LOG_BA\n");
+
+	/* Clear EventLogInt set by IOMMU not being able to read command buffer */
+	mmio_base[IOMMU_MMIO_STATUS_REGISTER] &= ~2;
+	barrier();
+	mmio_base[IOMMU_MMIO_CONTROL_REGISTER] |= IOMMU_CR_CmdBufEn | IOMMU_CR_EventLogEn;
+	asm volatile("wbinvd; sfence" ::: "memory");
+
+	mmio_base[IOMMU_MMIO_CONTROL_REGISTER] |= IOMMU_CR_IommuEn;
+
+	print_u64(mmio_base[IOMMU_MMIO_STATUS_REGISTER]);
+	print("IOMMU_MMIO_STATUS_REGISTER\n");
+
+	if (mmio_base[IOMMU_MMIO_EXTENDED_FEATURE] & IOMMU_EF_IASup) {
+		print("INVALIDATE_IOMMU_ALL\n");
+		cmd.opcode = INVALIDATE_IOMMU_ALL;
+		out_send_command(cmd);
+	} /* TODO: else? */
+
+	print_u64(mmio_base[IOMMU_MMIO_EXTENDED_FEATURE]);
+	print("IOMMU_MMIO_EXTENDED_FEATURE\n");
+	print_u64(mmio_base[IOMMU_MMIO_STATUS_REGISTER]);
+	print("IOMMU_MMIO_STATUS_REGISTER\n");
+
+	/* Write to a variable inside SLB (does not work in the first call) */
+	cmd.u0 = _u(completed) | 1;
+	/* This should be '_u(completed)>>32', but SLB can't be above 4GB anyway */
+	cmd.u1 = 0;
+
+	cmd.opcode = COMPLETION_WAIT;
+	cmd.u2 = 0x656e6f64;	/* "done" */
+	out_send_command(cmd);
 
 	print_u64(mmio_base[IOMMU_MMIO_STATUS_REGISTER]);
 	print("IOMMU_MMIO_STATUS_REGISTER\n");

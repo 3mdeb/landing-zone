@@ -264,7 +264,7 @@ ENDDATA(event_log)
 
 GLOBAL(device_table)
 	.rept (256)
-	.quad IOMMU_DTE_Q0_V + IOMMU_DTE_Q0_TV
+	.quad IOMMU_DTE_Q0_V + IOMMU_DTE_Q0_TV /* + IOMMU_DTE_Q0_IR + IOMMU_DTE_Q0_IW */
 	.quad 0
 	.quad 0 /* IOMMU_DTE_Q2_IV + IOMMU_DTE_Q2_IG */
 	.quad 0
@@ -283,3 +283,23 @@ GLOBAL(lz_header) /* The LZ header setup by the bootloader */
 	.long	0 /* Zero Page address */
 	.fill	0x14 /* MSB Key Hash */
 ENDDATA(lz_header)
+
+.section .outside, "a", @progbits
+.align 16 * PAGE_SIZE
+
+GLOBAL(out_command_buf)
+	.fill PAGE_SIZE
+ENDDATA(out_command_buf)
+
+GLOBAL(out_event_log)
+	.fill PAGE_SIZE
+ENDDATA(out_event_log)
+
+GLOBAL(out_device_table)
+	.rept (256)
+	.quad IOMMU_DTE_Q0_V + IOMMU_DTE_Q0_TV + IOMMU_DTE_Q0_IR + IOMMU_DTE_Q0_IW
+	.quad 0
+	.quad 0 /* IOMMU_DTE_Q2_IV + IOMMU_DTE_Q2_IG */
+	.quad 0
+	.endr
+ENDDATA(out_device_table)

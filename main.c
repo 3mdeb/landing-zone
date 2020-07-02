@@ -27,6 +27,8 @@
 #include <linux-bootparams.h>
 
 #ifdef DEBUG
+#define TEST_DMA
+
 static void print_char(char c)
 {
 	while ( !(inb(0x3f8 + 5) & 0x20) )
@@ -239,6 +241,31 @@ static void do_dma(void)
 	// physically sending the data, this reads idle bus lines.
 	outb(0x09, 0x05);
 }
+
+static void test_dma(void)
+{
+	memset(_p(1), 0xcc, 0x20);
+	print("before DMA:\n");
+	hexdump(_p(0), 0x30);
+	do_dma();
+	/* Important line, it delays hexdump */
+	print("after DMA:              \n");
+	hexdump(_p(0), 0x30);
+	/* Important line, it delays hexdump */
+	print("and again\n");
+	hexdump(_p(0), 0x30);
+
+	memset(_p(1), 0xcc, 0x20);
+	print("before DMA2\n");
+	hexdump(_p(0), 0x30);
+	do_dma();
+	/* Important line, it delays hexdump */
+	print("after DMA2              \n");
+	hexdump(_p(0), 0x30);
+	/* Important line, it delays hexdump */
+	print("and again2\n");
+	hexdump(_p(0), 0x30);
+}
 #endif
 
 /*
@@ -274,20 +301,7 @@ asm_return_t lz_main(void)
 	bp = _p(lz_header.zero_page_addr);
 
 #ifdef TEST_DMA
-	memset(_p(1), 0xcc, 0x20); //_p(0) gives a null-pointer error
-	print("before DMA:\n");
-	hexdump(_p(0), 0x30);
-	do_dma();
-	/* Important line, it delays hexdump */
-	print("after DMA:              \n");
-	hexdump(_p(0), 0x30);
-	memset(_p(1), 0xcc, 0x20);
-	print("before DMA2\n");
-	hexdump(_p(0), 0x30);
-	do_dma();
-	/* Important line, it delays hexdump */
-	print("after DMA2              \n");
-	hexdump(_p(0), 0x30);
+	test_dma();
 #endif
 
 	pci_init();
@@ -313,7 +327,7 @@ asm_return_t lz_main(void)
 	 *        configured before SKINIT
 	 */
 
-	if (iommu_cap == 0 || iommu_load_device_table(iommu_cap, &iommu_done)) {
+	if (iommu_cap == 0 || out_iommu_load_device_table(iommu_cap, &iommu_done)) {
 		if (iommu_cap)
 			print("IOMMU disabled by a firmware, please check your settings\n");
 
@@ -323,6 +337,77 @@ asm_return_t lz_main(void)
 		bp->tb_dev_map = 0;
 	} else {
 		/* Turn off SLB protection, try again */
+#ifdef TEST_DMA
+		test_dma();
+#endif
+
+		/* Cache now permits DMA */
+		iommu_load_device_table(iommu_cap, &iommu_done);
+		/* Cache is not valid, but has not been invalidated */
+
+		print("Cache is not valid, but has not been invalidated\n");
+#ifdef TEST_DMA
+		test_dma();
+#endif
+
+		u32 tmp;
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF8, 4, 0x8000000d);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xFC, 4, &tmp);
+		print_p(_p(tmp));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF8, 4, tmp | (1<<9));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF8, 4, 0x8001000d);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xFC, 4, &tmp);
+		print_p(_p(tmp));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF8, 4, tmp | (1<<9));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF8, 4, 0x8002000d);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xFC, 4, &tmp);
+		print_p(_p(tmp));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF8, 4, tmp | (1<<9));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF8, 4, 0x8003000d);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xFC, 4, &tmp);
+		print_p(_p(tmp));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF8, 4, tmp | (1<<9));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF8, 4, 0x8004000d);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xFC, 4, &tmp);
+		print_p(_p(tmp));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF8, 4, tmp | (1<<9));
+
+
+
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF0, 4, 0x156);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xF4, 4, &tmp);
+		print_p(_p(tmp));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF4, 4, tmp | (1<<2));
+
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF0, 4, 0x110);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xF4, 4, &tmp);
+		print_p(_p(tmp));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF4, 4, (tmp & 0xfffff8ff) | (1<<10) | (1<<13));
+		print("   DTCSoftInvalidate\n");
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF0, 4, 0x114);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xF4, 4, &tmp);
+		print_p(_p(tmp));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF4, 4, (tmp & 0xfffff8ff) | (1<<10) | (1<<13));
+		print("   ITCSoftInvalidate\n");
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF0, 4, 0x118);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xF4, 4, &tmp);
+		print_p(_p(tmp));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF4, 4, (tmp & 0xfffff8ff) | (1<<10) | (1<<13));
+		print("   PTCASoftInvalidate\n");
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF0, 4, 0x11c);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xF4, 4, &tmp);
+		print_p(_p(tmp));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF4, 4, (tmp & 0xfffff8ff) | (1<<10) | (1<<13));
+		print("   PTCBSoftInvalidate\n");
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF0, 4, 0x150);
+		pci_read(0, 0, PCI_DEVFN(0,2), 0xF4, 4, &tmp);
+		print_p(_p(tmp));
+		pci_write(0, 0, PCI_DEVFN(0,2), 0xF4, 4, (tmp & 0xfffff8ff) | (1<<10) | (1<<13));
+		print("   PDCSoftInvalidate\n");
+#ifdef TEST_DMA
+		test_dma();
+#endif
+
 		dev = dev_locate();
 		print("Disabling SLB protection\n");
 		if (dev) {
@@ -336,27 +421,7 @@ asm_return_t lz_main(void)
 		}
 
 #ifdef TEST_DMA
-		memset(_p(1), 0xcc, 0x20);
-		print("before DMA:\n");
-		hexdump(_p(0), 0x30);
-		do_dma();
-		/* Important line, it delays hexdump */
-		print("after DMA:              \n");
-		hexdump(_p(0), 0x30);
-		/* Important line, it delays hexdump */
-		print("and again\n");
-		hexdump(_p(0), 0x30);
-
-		memset(_p(1), 0xcc, 0x20);
-		print("before DMA2\n");
-		hexdump(_p(0), 0x30);
-		do_dma();
-		/* Important line, it delays hexdump */
-		print("after DMA2              \n");
-		hexdump(_p(0), 0x30);
-		/* Important line, it delays hexdump */
-		print("and again2\n");
-		hexdump(_p(0), 0x30);
+		test_dma();
 #endif
 
 		iommu_load_device_table(iommu_cap, &iommu_done);
@@ -371,27 +436,7 @@ asm_return_t lz_main(void)
 	}
 
 #ifdef TEST_DMA
-	memset(_p(1), 0xcc, 0x20);
-	print("before DMA:\n");
-	hexdump(_p(0), 0x30);
-	do_dma();
-	/* Important line, it delays hexdump */
-	print("after DMA:              \n");
-	hexdump(_p(0), 0x30);
-	/* Important line, it delays hexdump */
-	print("and again\n");
-	hexdump(_p(0), 0x30);
-
-	memset(_p(1), 0xcc, 0x20);
-	print("before DMA2\n");
-	hexdump(_p(0), 0x30);
-	do_dma();
-	/* Important line, it delays hexdump */
-	print("after DMA2              \n");
-	hexdump(_p(0), 0x30);
-	/* Important line, it delays hexdump */
-	print("and again2\n");
-	hexdump(_p(0), 0x30);
+	test_dma();
 #endif
 
 	print("\ncode32_start ");

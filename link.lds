@@ -67,6 +67,10 @@ SECTIONS
 		*(.got)
 	}
 
+	.outside : {
+		*(.outside)
+	}
+
 	_end = .;
 
 	/DISCARD/ : {
@@ -74,5 +78,5 @@ SECTIONS
 	}
 }
 
-ASSERT(_end <= 0x10000, "Landing Zone exceeds 64k");
+/* ASSERT(_end <= 0x10000, "Landing Zone exceeds 64k"); */
 ASSERT(SIZEOF(.got) == 0, ".got section not empty - non-hidden symbols used?");
