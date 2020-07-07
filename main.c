@@ -312,6 +312,7 @@ asm_return_t lz_multiboot2()
 
 	tpm = enable_tpm();
 	tpm_request_locality(tpm, 2);
+	event_log_init(tpm);
 
 	/* Extend PCR18 with MBI structure's hash; this includes all cmdlines.
 	 * Use 'type' and not 'size', as their offsets are swapped in the header! */
@@ -376,6 +377,9 @@ asm_return_t lz_multiboot2()
 
 	tpm_relinquish_locality(tpm);
 	free_tpm(tpm);
+
+	print("TPM event log:\n");
+	hexdump(_p(lz_header.event_log_addr), lz_header.event_log_size);
 
 	print("lz_multiboot2 returning\n");
 
