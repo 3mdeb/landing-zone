@@ -18,17 +18,14 @@
 
 #include <defs.h>
 #include <types.h>
-#include <config.h>
 #include <boot.h>
 #include <pci.h>
-#include <dev.h>
 #include <tpm.h>
 #include <sha1sum.h>
 #include <sha256.h>
 #include <linux-bootparams.h>
 #include <multiboot2.h>
-
-static u8 __page_data dev_table[3 * PAGE_SIZE];
+#include <event_log.h>
 
 #ifdef DEBUG
 static void print_char(char c)
@@ -143,16 +140,16 @@ static void print_p(const void * unused) { }
 static void hexdump(const void *unused, size_t unused2) { }
 #endif
 
-static void extend_pcr(struct tpm *tpm, void *data, u32 size, u32 pcr)
+static void extend_pcr(struct tpm *tpm, void *data, u32 size, u32 pcr, char *ev)
 {
-	if (tpm->family == TPM12) {
-		u8 hash[SHA1_DIGEST_SIZE];
+	u8 hash[SHA1_DIGEST_SIZE];
+	sha1sum(hash, data, size);
+	print("shasum calculated:\n");
+	hexdump(hash, SHA1_DIGEST_SIZE);
+	tpm_extend_pcr(tpm, pcr, TPM_HASH_ALG_SHA1, hash);
 
-		sha1sum(hash, data, size);
-		print("shasum calculated:\n");
-		hexdump(hash, SHA1_DIGEST_SIZE);
-		tpm_extend_pcr(tpm, pcr, TPM_HASH_ALG_SHA1, hash);
-		print("PCR extended\n");
+	if (tpm->family == TPM12) {
+		log_event_tpm12(pcr, hash, ev);
 	} else if (tpm->family == TPM20) {
 		u8 sha256_hash[SHA256_DIGEST_SIZE];
 
@@ -160,8 +157,11 @@ static void extend_pcr(struct tpm *tpm, void *data, u32 size, u32 pcr)
 		print("shasum calculated:\n");
 		hexdump(sha256_hash, SHA256_DIGEST_SIZE);
 		tpm_extend_pcr(tpm, pcr, TPM_HASH_ALG_SHA256, &sha256_hash[0]);
-		print("PCR extended\n");
+
+		log_event_tpm20(pcr, hash, sha256_hash, ev);
 	}
+
+	print("PCR extended\n");
 }
 
 /*
@@ -222,8 +222,6 @@ asm_return_t lz_main(void)
 	struct boot_params *bp;
 	struct kernel_info *ki;
 	struct mle_header *mle_header;
-	u64 pfn, end_pfn;
-	u32 dev;
 	void *pm_kernel_entry;
 	struct tpm *tpm;
 
@@ -238,25 +236,7 @@ asm_return_t lz_main(void)
 	/* The Zero Page with the boot_params and legacy header */
 	bp = _p(lz_header.proto_struct);
 
-	/* DEV CODE */
-
-	pfn = PAGE_PFN(bp);
-	end_pfn = PAGE_PFN(PAGE_DOWN(_start + 0x10000));
-
-	/* TODO: check end_pfn is not ouside of range of DEV map */
-
-	/* build protection bitmap */
-	for (;pfn <= end_pfn; pfn++) {
-		dev_protect_page(pfn, dev_table);
-	}
-
 	pci_init();
-	dev = dev_locate();
-	dev_load_map(dev, _u(dev_table));
-	dev_flush_cache(dev);
-
-	/* Set the DEV address for the TB stub to use */
-	bp->tb_dev_map = _u(dev_table);
 
 	print("\ncode32_start ");
 	print_p(_p(bp->code32_start));
@@ -290,9 +270,10 @@ asm_return_t lz_main(void)
 	 */
 	tpm = enable_tpm();
 	tpm_request_locality(tpm, 2);
+	event_log_init(tpm);
 
 	/* extend TB Loader code segment into PCR17 */
-	extend_pcr(tpm, _p(bp->code32_start), bp->syssize << 4, 17);
+	extend_pcr(tpm, _p(bp->code32_start), bp->syssize << 4, 17, "Kernel");
 
 	tpm_relinquish_locality(tpm);
 	free_tpm(tpm);
@@ -304,6 +285,8 @@ asm_return_t lz_main(void)
 	hexdump(bp, 0x280);
 	print("lz_base:\n");
 	hexdump(_start, 0x100);
+	print("TPM event log:\n");
+	hexdump(_p(lz_header.event_log_addr), lz_header.event_log_size);
 
 	print("lz_main() is about to exit\n");
 
@@ -332,7 +315,7 @@ asm_return_t lz_multiboot2()
 
 	/* Extend PCR18 with MBI structure's hash; this includes all cmdlines.
 	 * Use 'type' and not 'size', as their offsets are swapped in the header! */
-	extend_pcr(tpm, &tag, tag->type, 18);
+	extend_pcr(tpm, &tag, tag->type, 18, "MBI structure");
 
 	tag++;
 
@@ -371,7 +354,7 @@ asm_return_t lz_multiboot2()
 		tag = multiboot_next_tag(tag);
 	}
 
-	extend_pcr(tpm, kernel_entry, kernel_size, 17);
+	extend_pcr(tpm, kernel_entry, kernel_size, 17, "Kernel");
 
 	tag = _p(lz_header.proto_struct);
 	tag++;
@@ -385,7 +368,7 @@ asm_return_t lz_multiboot2()
 			print_p(_p(mod->mod_start));
 			print_p(_p(mod->mod_end));
 			print("]\n");
-			extend_pcr(tpm, _p(mod->mod_start), mod->mod_end - mod->mod_start, 17);
+			extend_pcr(tpm, _p(mod->mod_start), mod->mod_end - mod->mod_start, 17, "MB2 module");
 		}
 
 		tag = multiboot_next_tag(tag);

@@ -20,7 +20,6 @@
  */
 
 #include <defs.h>
-#include <config.h>
 #include <multiboot2.h>
 
 /* Selectors, CS and SS compatible with initial state after SKINIT */
@@ -38,7 +37,9 @@ GLOBAL(sl_header)
 ENDDATA(sl_header)
 
 lz_first_stack:
-	.fill LZ_FIRST_STAGE_STACK_SIZE, 1, 0
+	.fill 0x1fc, 1   /* Enough space for now */
+	.align 0x10, 0	 /* Ensure proper alignment for 64bit */
+.L_stack_base:
 ENDDATA(lz_first_stack)
 
 	.text
@@ -63,7 +64,16 @@ GLOBAL(_entry)
 	mov	%eax, %ebp
 
 	/* Set up the Stage 1 stack. */
-	lea	LZ_FIRST_STAGE_STACK_START(%ebp), %esp
+	lea	.L_stack_base(%ebp), %esp
+
+	/*
+	 * Clobber IDTR.limit to prevent stray interrupts/exceptions/INT from
+	 * vectoring via the IVT into unmeasured code.
+	 */
+	push	$0
+	push	$0
+	lidt	(%esp)
+	add	$8, %esp
 
 	/* Clear R_INIT and DIS_A20M.  */
 	mov	$IA32_VM_CR, %ecx
@@ -262,13 +272,22 @@ ENDDATA(l4_identmap)
 
 	.section .bootloader_data, "a", @progbits
 
-GLOBAL(lz_header) /* The LZ header set up by the bootloader */
-	.long	0x8e26f178 /* UUID */
+GLOBAL(lz_header)		/* Set up by the bootloader, keep in sync with boot.h */
+	.long	0x8e26f178	/* UUID */
 	.long	0xe9119204
 	.long	0x5bc82a83
 	.long	0x02ccc476
 boot_protocol:
-	.long	0 /* Boot protocol used */
-	.long	0 /* Address of the relevant structure of given protocol */
-	.fill	0x14 /* MSB Key Hash */
+	.long	0		/* Boot protocol used */
+	.long	0		/* Address of the relevant structure of given protocol */
+	.long	0		/* Event Log address */
+	.long	0		/* Event Log size */
+	.fill	0x14		/* MSB Key Hash */
+
+	/* Hashes of LZ to be written to DRTM TPM event log */
+	.long	2			/* count */
+	.word	0x0004		/* sha1_id */
+	.fill   0x14		/* sha1_hash */
+	.word	0x000B		/* sha256_id */
+	.fill   0x20		/* sha256_hash */
 ENDDATA(lz_header)
