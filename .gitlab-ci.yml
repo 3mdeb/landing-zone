@@ -1,9 +1,12 @@
 stages:
+  - git-robot
   - build
 
 build_debug_disabled:
   stage: build
   image: gcc:9.3.0
+  except:
+    - debian
   # install bsdmainutils for hexdump
   before_script:
     - apt update && apt -y install bsdmainutils
@@ -15,6 +18,8 @@ build_debug_disabled:
 
 build_nixpkg_debug_disabled:
   stage: build
+  except:
+    - debian
   variables:
     NIXPKG: "landing-zone"
     LZ_COMMIT: "$CI_COMMIT_SHA"
@@ -25,8 +30,10 @@ build_nixpkg_debug_disabled:
     strategy: depend
 
 build_debug_enabled:
-  stage: build
   image: gcc:9.3.0
+  stage: build
+  except:
+    - debian
   # install bsdmainutils for hexdump
   before_script:
     - apt update && apt -y install bsdmainutils
@@ -38,6 +45,8 @@ build_debug_enabled:
 
 build_nixpkg_debug_enabled:
   stage: build
+  except:
+    - debian
   variables:
     NIXPKG: "landing-zone"
     LZ_COMMIT: "$CI_COMMIT_SHA"
@@ -46,3 +55,38 @@ build_nixpkg_debug_enabled:
     project: trenchboot1/3mdeb/nixos-trenchboot-configs
     branch: master
     strategy: depend
+
+build_debian_pkg:
+  image: debian:stable-20200414
+  stage: build
+  only:
+    - debian
+  before_script:
+    - apt update && apt -y install build-essential dh-make
+  script:
+    - dpkg-buildpackage
+    - mkdir artifacts && mv ../landing-zone_*_amd64.deb artifacts/
+    - dpkg -c artifacts/*.deb
+  artifacts:
+    paths:
+      - artifacts/*
+
+git_pull:
+  image: debian:stable-20200414
+  stage: git-robot
+  tags:
+    - local
+  only:
+    - master
+  before_script:
+    - echo "machine github.com
+              login 3mdeb-robot
+              password $GITHUB_PERSONAL_ACCESS_TOKEN" >> ~/.netrc
+    - apt update && apt install -y git
+    - git config --global user.email "robot@3mdeb.com"
+    - git config --global user.name "3mdeb-robot"
+  script:
+    - git clone https://github.com/3mdeb/landing-zone.git -b debian
+    - cd landing-zone
+    - git pull . origin/master
+    - git push origin debian
