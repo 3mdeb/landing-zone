@@ -18,16 +18,13 @@
 
 #include <defs.h>
 #include <types.h>
-#include <config.h>
 #include <boot.h>
 #include <pci.h>
-#include <dev.h>
-#include <tpm.h>
+#include "tpmlib/tpm.h"
+#include "tpmlib/tpm2_constants.h"
 #include <sha1sum.h>
 #include <sha256.h>
 #include <linux-bootparams.h>
-
-static u8 __page_data dev_table[3 * PAGE_SIZE];
 
 #ifdef DEBUG
 static void print_char(char c)
@@ -35,7 +32,7 @@ static void print_char(char c)
 	while ( !(inb(0x3f8 + 5) & 0x20) )
 		;
 
-	outb(0x3f8, c);
+	outb(c, 0x3f8);
 }
 
 static void print(const char * txt) {
@@ -150,7 +147,7 @@ static void extend_pcr(struct tpm *tpm, void *data, u32 size, u32 pcr)
 		sha1sum(hash, data, size);
 		print("shasum calculated:\n");
 		hexdump(hash, SHA1_DIGEST_SIZE);
-		tpm_extend_pcr(tpm, pcr, TPM_HASH_ALG_SHA1, hash);
+		tpm_extend_pcr(tpm, pcr, TPM_ALG_SHA1, hash);
 		print("PCR extended\n");
 	} else if (tpm->family == TPM20) {
 		u8 sha256_hash[SHA256_DIGEST_SIZE];
@@ -158,7 +155,7 @@ static void extend_pcr(struct tpm *tpm, void *data, u32 size, u32 pcr)
 		sha256sum(sha256_hash, data, size);
 		print("shasum calculated:\n");
 		hexdump(sha256_hash, SHA256_DIGEST_SIZE);
-		tpm_extend_pcr(tpm, pcr, TPM_HASH_ALG_SHA256, &sha256_hash[0]);
+		tpm_extend_pcr(tpm, pcr, TPM_ALG_SHA256, &sha256_hash[0]);
 		print("PCR extended\n");
 	}
 }
@@ -221,8 +218,6 @@ asm_return_t lz_main(void)
 	struct boot_params *bp;
 	struct kernel_info *ki;
 	struct mle_header *mle_header;
-	u64 pfn, end_pfn;
-	u32 dev;
 	void *pm_kernel_entry;
 	struct tpm *tpm;
 
@@ -237,25 +232,7 @@ asm_return_t lz_main(void)
 	/* The Zero Page with the boot_params and legacy header */
 	bp = _p(lz_header.zero_page_addr);
 
-	/* DEV CODE */
-
-	pfn = PAGE_PFN(bp);
-	end_pfn = PAGE_PFN(PAGE_DOWN(_start + 0x10000));
-
-	/* TODO: check end_pfn is not ouside of range of DEV map */
-
-	/* build protection bitmap */
-	for (;pfn <= end_pfn; pfn++) {
-		dev_protect_page(pfn, dev_table);
-	}
-
 	pci_init();
-	dev = dev_locate();
-	dev_load_map(dev, _u(dev_table));
-	dev_flush_cache(dev);
-
-	/* Set the DEV address for the TB stub to use */
-	bp->tb_dev_map = _u(dev_table);
 
 	print("\ncode32_start ");
 	print_p(_p(bp->code32_start));

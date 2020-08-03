@@ -38,6 +38,8 @@ typedef  int16_t s16;
 typedef  int32_t s32;
 typedef  int64_t s64;
 
+#include <string.h>	/* memcpy, memset */
+
 #else
 /*
  * If we are freestanding (i.e. building lz_header itself), there is no
@@ -57,6 +59,8 @@ typedef unsigned long	uintptr_t;
 
 typedef unsigned long	size_t;
 typedef long		ssize_t;
+
+typedef _Bool		bool;
 
 #define NULL ((void *)0)
 
