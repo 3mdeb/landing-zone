@@ -148,35 +148,6 @@ GLOBAL(_entry)
 	 */
 	mov	%eax, %ebx
 	mov	%edx, %esi
-
-#ifdef __x86_64__
-
-	/* Setup target to ret to compat mode */
-	lea	1f(%rip), %ecx
-	push	$CS_SEL32
-	push	%rcx
-	lretq
-
-	.code32
-1:	/* Now in IA-32e compatibility mode, next stop is protected mode */
-
-	/* Turn paging off - we are identity mapped so we will survive */
-	mov	%cr0, %eax
-	and	$~(CR0_PG | CR0_NE | CR0_TS | CR0_MP), %eax
-	mov	%eax, %cr0
-
-	/* Disable IA-32e mode */
-	mov	$IA32_EFER, %ecx
-	rdmsr
-	and	$~(EFER_LME >> 8), %ah
-	wrmsr
-
-	/* Now in protected mode, make things look like TXT post launch */
-	mov	%cr4, %eax
-	and	$~CR4_PAE, %eax
-	mov	%eax, %cr4
-#endif /* 64bit teardown. */
-
 	push	$0
 	popf
 
@@ -185,13 +156,13 @@ GLOBAL(_entry)
 
 	/* Jump to entry target - EBX: startup_32, ESI: ZP base, EDX: LZ base */
 	mov	%ebp, %edx
-	jmp	*%ebx
+	jmp	*%rbx
 
 multiboot2_kernel:
 	/* Jump to entry target - EBX: MBI pointer, EAX: Multiboot2 magic number */
-	xchg	%esi, %ebx
+	xchg	%rsi, %rbx
 	mov	$MULTIBOOT2_BOOTLOADER_MAGIC, %eax
-	jmp *%esi
+	jmp *%rsi
 ENDFUNC(_entry)
 
 	.data
