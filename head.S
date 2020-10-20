@@ -94,7 +94,6 @@ GLOBAL(_entry)
 	add	%ebp, 0x08 + l3_identmap(%ebp) /* L3[1] => Second L2 */
 	add	%ebp, 0x10 + l3_identmap(%ebp) /* L3[2] => Third  L2 */
 	add	%ebp, 0x18 + l3_identmap(%ebp) /* L3[3] => Fourth L2 */
-	add	%ebp,        l2_identmap(%ebp) /* L2[0] => L1        */
 #endif
 
 	/* Load GDT */
@@ -236,18 +235,8 @@ ENDDATA(gdt)
 	.align PAGE_SIZE
 
 	/* 64bit Pagetables, identity map of the first 4G of RAM. */
-
-l1_identmap: /* 1x L1 page, mapping 2M of RAM.  No relocations. */
+l2_identmap: /* 4x L2 pages, each mapping 1G of RAM.  No relocation. */
 	idx = 0
-	.rept 512
-	.quad (idx << L1_PT_SHIFT) + _PAGE_AD + _PAGE_RW + _PAGE_PRESENT
-	idx = idx + 1
-	.endr
-ENDDATA(l1_identmap)
-
-l2_identmap: /* 4x L2 pages, each mapping 1G of RAM.  1 relocation. */
-	.quad l1_identmap + _PAGE_AD + _PAGE_RW + _PAGE_PRESENT
-	idx = 1
 	.rept (512 * 4) - 1
 	.quad (idx << L2_PT_SHIFT) + _PAGE_PSE + _PAGE_AD + _PAGE_RW + _PAGE_PRESENT
 	idx = idx + 1
