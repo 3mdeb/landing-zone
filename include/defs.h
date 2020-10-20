@@ -35,6 +35,12 @@
 #define PAGE_DOWN(p)    ((uintptr_t)(p) & ~(PAGE_SIZE - 1))
 #define PAGE_PFN(p)     ((uintptr_t)(p) >> PAGE_SHIFT)
 
+#define ALIGN(x, a)             __ALIGN_MASK(x, (__typeof__(x))(a)-1UL)
+#define __ALIGN_MASK(x, mask)   (((x)+(mask))&~(mask))
+#define ALIGN_UP(x, a)          ALIGN((x), (a))
+#define ALIGN_DOWN(x, a)        ((x) & ~((__typeof__(x))(a)-1UL))
+#define IS_ALIGNED(x, a)        (((x) & ((__typeof__(x))(a)-1UL)) == 0)
+
 #define GIGABYTE    0x40000000
 #define SLB_SIZE    0x10000
 
@@ -60,6 +66,7 @@
 #define __packed        __attribute__ ((packed))
 #define __maybe_unused  __attribute__ ((unused))
 #define noinline        __attribute__ ((noinline))
+#define __aligned(x)    __attribute__ ((aligned(x)))
 
 /* Due to the 64k total size limit, group all page aligned data together. */
 #define __page_data \

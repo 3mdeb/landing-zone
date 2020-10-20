@@ -193,4 +193,11 @@ static inline void __attribute__((noreturn)) die(void)
 	unreachable();
 }
 
+static inline u64 read_cr2(void)
+{
+	u64 val;
+	asm volatile ("mov %%cr2, %0" : "=q" (val) : : "memory");
+	return val;
+}
+
 #endif /* __BOOT_H__ */

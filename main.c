@@ -28,6 +28,7 @@
 #include <event_log.h>
 #include <multiboot2.h>
 #include <tags.h>
+#include <x86.h>
 
 u32 boot_protocol;
 
@@ -138,11 +139,159 @@ static void hexdump(const void *memory, size_t length)
 		}
 	}
 }
+static void print_p2(const void * _p) {
+	char tmp[sizeof(void*)*2 + 5] = "0x";
+	int i;
+	size_t p = (size_t)_p;
+
+	for (i=0; i<sizeof(void*); i++) {
+		if ((p & 0xf) >= 10)
+			tmp[sizeof(void*)*2 + 1 - 2*i] = (p & 0xf) + 'a' - 10;
+		else
+			tmp[sizeof(void*)*2 + 1 - 2*i] = (p & 0xf) + '0';
+		p >>= 4;
+		if ((p & 0xf) >= 10)
+			tmp[sizeof(void*)*2 - 2*i] = (p & 0xf) + 'a' - 10;
+		else
+			tmp[sizeof(void*)*2 - 2*i] = (p & 0xf) + '0';
+		p >>= 4;
+	}
+	tmp[sizeof(void*)*2 + 2] = '\0';
+	print(tmp);
+}
+
 #else
 static void print(const char * unused) { }
 static void print_p(const void * unused) { }
+static void print_p2(const void * unused) { }
 static void hexdump(const void *unused, size_t unused2) { }
 #endif
+
+void x86_exception(struct eregs *info)
+{
+	u8 *code;
+#ifdef __x86_64__
+#define MDUMP_SIZE 0x100
+	print("CPU Index 0 - APIC 0 Unexpected Exception:\n");
+	print_p2(_p(info->vector));
+	print("@");
+	print_p2(_p(info->cs));
+	print(":");
+	print_p2(_p(info->rip));
+	print("- Halting\n");
+	print("Code: ");
+	print_p2(_p(info->error_code));
+	print("rflags: ");
+	print_p2(_p(info->rflags));
+	print("cr2: ");
+	print_p2(_p(read_cr2()));
+	print("rax: ");
+	print_p2(_p(info->rax));
+	print("rbx: ");
+	print_p2(_p(info->rbx));
+	print("\n");
+	print("rcx: ");
+	print_p2(_p(info->rcx));
+	print("rdx: ");
+	print_p2(_p(info->rdx));
+	print("\n");
+	print("rdi: ");
+	print_p2(_p(info->rdi));
+	print("rsi: ");
+	print_p2(_p(info->rsi));
+	print("\n");
+	print("rbp: ");
+	print_p2(_p(info->rbp));
+	print("rsp: ");
+	print_p2(_p(info->rsp));
+	print("\n");
+	print("r8: ");
+	print_p2(_p(info->r8));
+	print("r9: ");
+	print_p2(_p(info->r9));
+	print("\n");
+	print("r10: ");
+	print_p2(_p(info->r10));
+	print("r11: ");
+	print_p2(_p(info->r11));
+	print("\n");
+	print("r12: ");
+	print_p2(_p(info->r12));
+	print("r13: ");
+	print_p2(_p(info->r13));
+	print("\n");
+	print("r14: ");
+	print_p2(_p(info->r14));
+	print("r15: ");
+	print_p2(_p(info->r15));
+	print("\n");
+	code = (u8 *)((uintptr_t)info->rip - (MDUMP_SIZE >> 2));
+#else
+#define MDUMP_SIZE 0x80
+	print("CPU Index 0 - APIC 0 Unexpected Exception:\n");
+	print_p2(_p(info->vector));
+	print("@");
+	print_p2(_p(info->cs));
+	print(":");
+	print_p2(_p(info->eip));
+	print("- Halting\n");
+	print("Code: ");
+	print_p2(_p(info->error_code));
+	print("eflags: ");
+	print_p2(_p(info->eflags));
+	print("cr2: ");
+	print_p2(_p(read_cr2()));
+	print("eax: ");
+	print_p2(_p(info->eax));
+	print("ebx: ");
+	print_p2(_p(info->ebx));
+	print("\n");
+	print("ecx: ");
+	print_p2(_p(info->ecx));
+	print("edx: ");
+	print_p2(_p(info->edx));
+	print("\n");
+	print("edi: ");
+	print_p2(_p(info->edi));
+	print("esi: ");
+	print_p2(_p(info->esi));
+	print("\n");
+	print("ebp: ");
+	print_p2(_p(info->ebp));
+	print("esp: ");
+	print_p2(_p(info->esp));
+	print("\n");
+	code = (u8 *)((uintptr_t)info->eip - (MDUMP_SIZE >> 1));
+#endif
+	/* Align to 8-byte boundary please, and print eight bytes per row.
+	 * This is done to make DRAM burst timing/reordering errors more
+	 * evident from the looking at the dump */
+	code = (u8 *)((uintptr_t)code & ~0x7);
+	int i;
+	for (i = 0; i < MDUMP_SIZE; i++) {
+		if ((i & 0x07) == 0) {
+			print("\n");
+			print_p(_p(code + i));
+			print("\t");
+		}
+		print_p2(_p(code[i]));
+	}
+
+	/* Align to 4-byte boundary and up the stack. */
+	u32 *ptr = (u32 *)(ALIGN_DOWN((uintptr_t)info->esp, sizeof(u32)) + MDUMP_SIZE - 4);
+	for (i = 0; i < MDUMP_SIZE / sizeof(u32); ++i, --ptr) {
+		print("\n");
+		print_p(_p(ptr));
+		print("\t");
+		print_p2(_p( *ptr));
+		if ((uintptr_t)ptr == info->ebp)
+			print(" <-ebp");
+		else if ((uintptr_t)ptr == info->esp)
+			print(" <-esp");
+	}
+	print("\n");
+	die();
+}
 
 static void extend_pcr(struct tpm *tpm, void *data, u32 size, u32 pcr, char *ev)
 {
@@ -385,6 +534,9 @@ asm_return_t lz_main(void)
 		print("Bad bootloader data format\n");
 		reboot();
 	}
+
+	print("Loading IDT\n");
+	exception_init();
 
 	/*
 	 * TODO Note these functions can fail but there is no clear way to
